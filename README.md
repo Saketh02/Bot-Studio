@@ -14,7 +14,7 @@ A multi-tenant platform for creating AI-powered chatbots with custom document kn
 
 - **Frontend**: Next.js + React + TypeScript + Tailwind CSS
 - **Backend**: Python + FastAPI
-- **Databases**: Supabase (PostgreSQL + Storage), Chroma (Vector DB), Firebase (Chat History)
+- **Databases**: Supabase (PostgreSQL + Storage), Zilliz (Vector DB)
 - **Deployment**: Vercel (Frontend), Render (Backend), Cloudflare Pages (Widget)
 
 ## Setup
