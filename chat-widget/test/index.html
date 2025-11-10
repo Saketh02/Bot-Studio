@@ -58,6 +58,7 @@
     </div>
 
     <script src="./index.global.js"></script>
+
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         if (!window.BotStudioWidget) {
@@ -66,12 +67,12 @@
         }
         window.BotStudioWidget.init({
           chatbotId: "5d827f08-e2b6-4807-9627-e1bd454ed65c",
-          apiBaseUrl: "https://bot-studio-zixn.onrender.com",
+          apiBaseUrl: "http://localhost:8000",
           launcherLabel: "Chat with support",
           title: "Chat Assistant",
           subtitle: "Powered by Bot Studio",
           welcomeMessage: "Hi there! I’m here to help. Ask me anything about our services.",
-          accentColor: "#2563eb",
+          accentColor: "green",
           theme: "light",
           position: "bottom-right",
           panelHeight: 550

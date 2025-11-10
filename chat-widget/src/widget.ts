@@ -1,4 +1,4 @@
-import type { WidgetOptions, ChatMessage, ChatResponse } from "./types";
+import type { WidgetOptions, ChatMessage, ChatResponse, ChatStreamEvent } from "./types";
 
 const STYLE_ID = "bot-studio-widget-styles";
 
@@ -440,10 +440,17 @@ export class ChatWidget {
     this.refreshMessages();
 
     try {
-      const payload = await this.sendToApi(content);
+      const payload = await this.sendToApiStream(content, (delta) => {
+        this.appendToMessage(assistantMessage.id, delta);
+      });
+
+      const existing = this.getMessageById(assistantMessage.id);
+      const finalContent = payload.response || existing?.content || "";
+
       this.updateMessage(assistantMessage.id, {
         pending: false,
-        content: payload.response
+        content: finalContent,
+        sources: payload.sources
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -458,8 +465,8 @@ export class ChatWidget {
     }
   }
 
-  private async sendToApi(message: string): Promise<ChatResponse> {
-    const endpoint = `${this.options.apiBaseUrl.replace(/\/$/, "")}/api/chat/${encodeURIComponent(this.options.chatbotId)}`;
+  private async sendToApiStream(message: string, onDelta: (chunk: string) => void): Promise<ChatResponse> {
+    const endpoint = `${this.options.apiBaseUrl.replace(/\/$/, "")}/api/chat/${encodeURIComponent(this.options.chatbotId)}/stream`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -473,7 +480,57 @@ export class ChatWidget {
       throw new Error(detail || `HTTP ${response.status}`);
     }
 
-    return (await response.json()) as ChatResponse;
+    if (!response.body) {
+      throw new Error("Streaming body is not supported in this browser.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let finalPayload: ChatResponse | null = null;
+
+    const processBuffer = () => {
+      let newlineIndex = buffer.indexOf("\n");
+      while (newlineIndex >= 0) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (line) {
+          let event: ChatStreamEvent;
+          try {
+            event = JSON.parse(line) as ChatStreamEvent;
+          } catch (err) {
+            console.error("Failed to parse stream event:", err);
+            newlineIndex = buffer.indexOf("\n");
+            continue;
+          }
+
+          if (event.type === "delta") {
+            onDelta(event.data || "");
+          } else if (event.type === "final") {
+            finalPayload = event.data;
+          } else if (event.type === "error") {
+            throw new Error(event.message || "Streaming error");
+          }
+        }
+        newlineIndex = buffer.indexOf("\n");
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      processBuffer();
+    }
+
+    buffer += decoder.decode();
+    processBuffer();
+
+    if (!finalPayload) {
+      throw new Error("Streaming ended without a final message.");
+    }
+
+    return finalPayload;
   }
 
   private pushMessage(message: ChatMessage): void {
@@ -485,6 +542,23 @@ export class ChatWidget {
     this.messages = this.messages.map((message) =>
       message.id === id ? { ...message, ...patch } : message
     );
+  }
+
+  private appendToMessage(id: string, text: string): void {
+    this.messages = this.messages.map((message) =>
+      message.id === id
+        ? {
+            ...message,
+            pending: false,
+            content: `${message.content || ""}${text}`,
+          }
+        : message
+    );
+    this.refreshMessages();
+  }
+
+  private getMessageById(id: string): ChatMessage | undefined {
+    return this.messages.find((message) => message.id === id);
   }
 
   private refreshMessages(): void {

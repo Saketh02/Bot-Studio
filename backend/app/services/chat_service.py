@@ -1,6 +1,6 @@
 """Chat service for handling chatbot conversations via RAG."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator
 from openai import OpenAI
 
 from app.core.config import (
@@ -24,15 +24,14 @@ class ChatService:
         self.zilliz_service = zilliz_service
         self.supabase_service = SupabaseService()
 
-    def chat(
+    def _build_messages(
         self,
+        *,
         chatbot_id: str,
         message: str,
-        history: Optional[List[Dict[str, str]]] = None,
-        top_k: int = 5,
+        history: Optional[List[Dict[str, str]]],
+        top_k: int,
     ) -> Dict[str, Any]:
-        """Generate a chatbot response using retrieved context and OpenAI chat model."""
-
         if not message or not message.strip():
             raise ValueError("Message cannot be empty")
 
@@ -43,7 +42,6 @@ class ChatService:
         chatbot_name = chatbot.get("name", "your assistant")
         chatbot_purpose = chatbot.get("purpose")
 
-        # Start context with bot profile so small-talk questions can be answered
         context_blocks: List[str] = []
         profile_lines = [f"Chatbot Name: {chatbot_name}"]
         if chatbot_purpose:
@@ -52,7 +50,6 @@ class ChatService:
 
         sources: List[Dict[str, Any]] = []
 
-        # Retrieve relevant chunks from vector store
         search_results = self.zilliz_service.search(
             chatbot_id=chatbot_id,
             query_text=message,
@@ -75,7 +72,6 @@ class ChatService:
 
         context_string = "\n\n".join(context_blocks)
 
-        # Build message history for OpenAI
         system_prompt = CHAT_SYSTEM_PROMPT.format(
             chatbot_name=chatbot_name,
             chatbot_purpose=chatbot_purpose or "helping with the chatbot's knowledge base",
@@ -101,10 +97,32 @@ class ChatService:
 
         messages.append({"role": "user", "content": user_content})
 
+        return {
+            "messages": messages,
+            "sources": sources,
+            "chunks_used": len(search_results),
+        }
+
+    def chat(
+        self,
+        chatbot_id: str,
+        message: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        top_k: int = 5,
+    ) -> Dict[str, Any]:
+        """Generate a chatbot response using retrieved context and OpenAI chat model."""
+
+        payload = self._build_messages(
+            chatbot_id=chatbot_id,
+            message=message,
+            history=history,
+            top_k=top_k,
+        )
+
         try:
             response = self.client.chat.completions.create(
                 model=CHAT_MODEL,
-                messages=messages,
+                messages=payload["messages"],
                 temperature=0.7,
                 max_tokens=600,
             )
@@ -115,9 +133,62 @@ class ChatService:
 
         return {
             "response": reply,
-            "sources": sources,
-            "chunks_used": len(search_results),
+            "sources": payload["sources"],
+            "chunks_used": payload["chunks_used"],
             "chatbot_id": chatbot_id,
+        }
+
+    def chat_stream(
+        self,
+        chatbot_id: str,
+        message: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        top_k: int = 5,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Stream a chatbot response token-by-token."""
+
+        payload = self._build_messages(
+            chatbot_id=chatbot_id,
+            message=message,
+            history=history,
+            top_k=top_k,
+        )
+
+        try:
+            stream = self.client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=payload["messages"],
+                temperature=0.7,
+                max_tokens=600,
+                stream=True,
+            )
+        except Exception as exc:
+            raise Exception(f"OpenAI chat completion failed: {exc}")
+
+        accumulated_chunks: List[str] = []
+
+        for event in stream:
+            if not event.choices:
+                continue
+
+            delta = event.choices[0].delta.content or ""
+            if delta:
+                accumulated_chunks.append(delta)
+                yield {
+                    "type": "delta",
+                    "data": delta,
+                }
+
+        full_response = "".join(accumulated_chunks).strip()
+
+        yield {
+            "type": "final",
+            "data": {
+                "response": full_response,
+                "sources": payload["sources"],
+                "chunks_used": payload["chunks_used"],
+                "chatbot_id": chatbot_id,
+            },
         }
 
 

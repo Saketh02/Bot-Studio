@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -36,9 +36,56 @@ export default function ChatbotDetailPage() {
   const [ingesting, setIngesting] = useState(false)
   const [documentStatuses, setDocumentStatuses] = useState<any[]>([])
   const [loadingStatuses, setLoadingStatuses] = useState(false)
+  const [copySuccess, setCopySuccess] = useState<string | null>(null)
 
   // Backend API URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://bot-studio-zixn.onrender.com'
+
+  const WIDGET_SCRIPT_URL = process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL ?? 'https://bot-studio-dc6.pages.dev/index.global.js'
+
+  const embedSnippet = useMemo(() => {
+    const widgetOptions = {
+      chatbotId,
+      apiBaseUrl: API_URL,
+      launcherLabel: 'Chat with support',
+      title: name || 'Chat Assistant',
+      subtitle: 'Powered by Bot Studio',
+      welcomeMessage: 'Hi there! I’m here to help. Ask me anything about our services.',
+      accentColor: '#2563eb',
+      theme: 'light',
+      position: 'bottom-right',
+      panelHeight: 550,
+    }
+
+    const optionsBlock = JSON.stringify(widgetOptions, null, 2)
+      .split('\n')
+      .map((line) => `      ${line}`)
+      .join('\n')
+
+    const lines = [
+      `<script src="${WIDGET_SCRIPT_URL}" defer></script>`,
+      `<script>`,
+      `  window.addEventListener('DOMContentLoaded', () => {`,
+      `    window.BotStudioWidget.init({`,
+      optionsBlock,
+      `    });`,
+      `  });`,
+      `</script>`,
+    ]
+
+    return lines.join('\n')
+  }, [API_URL, WIDGET_SCRIPT_URL, chatbotId, name])
+
+  const handleCopyEmbed = async () => {
+    try {
+      await navigator.clipboard.writeText(embedSnippet)
+      setCopySuccess('Copied!')
+      setTimeout(() => setCopySuccess(null), 2000)
+    } catch (err) {
+      setCopySuccess('Copy failed. Try again.')
+      setTimeout(() => setCopySuccess(null), 3000)
+    }
+  }
 
   useEffect(() => {
     if (chatbotId && typeof chatbotId === 'string') {
@@ -681,6 +728,63 @@ export default function ChatbotDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* Widget Embed Snippet */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Embed Chat Widget</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Paste this snippet into any webpage to load the chatbot widget for <span className="font-semibold text-gray-800">{name || 'this chatbot'}</span>.
+                    Update labels or colors as needed before sharing.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyEmbed}
+                  className="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className="w-4 h-4"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 01-2-2V4c0-1.1.9-2 2-2h9a2 2 0 012 2v1"></path>
+                  </svg>
+                  Copy
+                </button>
+              </div>
+
+              <div className="relative mt-4">
+                <textarea
+                  readOnly
+                  value={embedSnippet}
+                  rows={embedSnippet.split('\n').length + 2}
+                  className="w-full font-mono text-sm bg-slate-900 text-slate-100 rounded-xl p-4 border border-slate-800 shadow-inner resize-none"
+                />
+                {copySuccess && (
+                  <span className="absolute bottom-3 right-4 text-xs font-medium text-emerald-400">
+                    {copySuccess}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+                <p className="font-semibold">Heads up:</p>
+                <ul className="list-disc pl-5 space-y-1 mt-2">
+                  <li>
+                    The script loads from <span className="font-mono text-xs bg-blue-100 px-2 py-0.5 rounded">{WIDGET_SCRIPT_URL}</span>.
+                  </li>
+                  <li>
+                    You can customize the chatbot's appearance (launcher, welcome message, color, theme & height).
+                  </li>
+                </ul>
+              </div>
+            </div>
 
             {/* Ingest Documents Button */}
             {files.length > 0 && (
