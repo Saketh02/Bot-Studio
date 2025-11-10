@@ -28,21 +28,24 @@ export default async function DashboardPage() {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
-  // Count total documents in storage
-  let totalDocuments = 0
-  if (chatbots && chatbots.length > 0) {
-    for (const chatbot of chatbots) {
-      const { data: files } = await supabase.storage
-        .from('chat-documents')
-        .list(`${user.id}/${chatbot.id}`, {
-          limit: 1000,
-          offset: 0,
-        })
-      if (files) {
-        totalDocuments += files.length
-      }
-    }
+  // Fetch document metadata for storage stats
+  const { data: documents } = await supabase
+    .from('document_metadata')
+    .select('file_size')
+    .eq('user_id', user.id)
+
+  const totalDocuments = documents?.length ?? 0
+  const totalBytes = documents?.reduce((sum, doc) => sum + (doc.file_size || 0), 0) ?? 0
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    const index = Math.floor(Math.log(bytes) / Math.log(1024))
+    const value = bytes / Math.pow(1024, index)
+    return `${value.toFixed(index === 0 ? 0 : value < 10 ? 2 : 1)} ${units[index]}`
   }
+
+  const storageUsed = formatBytes(totalBytes)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -95,9 +98,9 @@ export default async function DashboardPage() {
           </div>
 
           <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-transform">
-            <div className="text-sm font-semibold opacity-90 mb-2">Messages</div>
-            <div className="text-4xl font-bold">0</div>
-            <div className="text-sm opacity-75 mt-2">Total conversations</div>
+            <div className="text-sm font-semibold opacity-90 mb-2">Storage Used</div>
+            <div className="text-4xl font-bold">{storageUsed}</div>
+            <div className="text-sm opacity-75 mt-2">Across all documents</div>
           </div>
         </div>
 
