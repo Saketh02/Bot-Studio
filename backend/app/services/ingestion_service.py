@@ -36,6 +36,10 @@ class IngestionService:
         """
         print(f"[INGESTION] Starting ingestion for chatbot {chatbot_id}")
         
+        # Reset statuses so completed/failed documents are reprocessed
+        print(f"[INGESTION] Resetting document statuses to pending...")
+        self.supabase_service.reset_documents_for_reingest(chatbot_id)
+        
         # Get pending documents
         pending_docs = self.supabase_service.get_pending_documents(chatbot_id)
         print(f"[INGESTION] Found {len(pending_docs)} pending documents")

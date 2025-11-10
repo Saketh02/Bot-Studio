@@ -43,6 +43,30 @@ class SupabaseService:
             print(f"Error getting pending documents: {e}")
             return []
     
+    def reset_documents_for_reingest(self, chatbot_id: str) -> bool:
+        """
+        Reset document statuses so every document for a chatbot is eligible for ingestion again.
+        Sets status back to 'pending' and clears ingestion-specific fields.
+        """
+        try:
+            update_data = {
+                "status": "pending",
+                "error_message": None,
+                "chunk_count": None,
+                "processed_at": None,
+            }
+            (
+                self.client.table("document_metadata")
+                .update(update_data)
+                .eq("chatbot_id", chatbot_id)
+                .neq("status", "pending")
+                .execute()
+            )
+            return True
+        except Exception as e:
+            print(f"Error resetting document statuses: {e}")
+            return False
+
     def update_document_status(
         self,
         document_id: str,
