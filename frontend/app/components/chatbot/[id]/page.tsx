@@ -66,9 +66,9 @@ export default function ChatbotDetailPage() {
       `<script src="${WIDGET_SCRIPT_URL}" defer></script>`,
       `<script>`,
       `  window.addEventListener('DOMContentLoaded', () => {`,
-      `    window.BotStudioWidget.init({`,
+      `    window.BotStudioWidget.init(`,
       optionsBlock,
-      `    });`,
+      `    );`,
       `  });`,
       `</script>`,
     ]
